@@ -3,7 +3,13 @@ package main
 import (
 	"context"
 	"net/http"
+	"oficina-os/internal/handler"
+	"oficina-os/internal/repository/memory"
+	"oficina-os/internal/service"
+	"os"
+	"os/signal"
 	"sync"
+	"syscall"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
@@ -100,6 +106,31 @@ func updateOrder(c *echo.Context) error {
 }
 
 func main() {
+	// 	e := echo.New()
+	// 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
+	// 		AllowOrigins: []string{"*"},
+	// 		AllowHeaders: []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept},
+	// 	}))
+	// 	e.Use(middleware.RequestLogger())
+	//
+	// 	e.GET("/orders", func(c *echo.Context) error {
+	// 		dbMu.RLock()
+	// 		orders := make([]*Payload, len(db))
+	// 		copy(orders, db)
+	// 		dbMu.RUnlock()
+	// 		return c.JSON(200, db)
+	// 	})
+	// 	e.POST("/orders", createOrder)
+	// 	e.PUT("/orders/:id", updateOrder)
+	//
+	// 	sc := echo.StartConfig{Address: ":3339"}
+	// 	if err := sc.Start(context.Background(), e); err != nil {
+	// 		e.Logger.Error("failed to start server", "error", err)
+	// 	}
+	repo := memory.NewOrderRepository()
+	svc := service.NewOrderService(repo)
+	orderHandler := handler.NewOrderHandler(svc)
+
 	e := echo.New()
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
 		AllowOrigins: []string{"*"},
@@ -107,18 +138,14 @@ func main() {
 	}))
 	e.Use(middleware.RequestLogger())
 
-	e.GET("/orders", func(c *echo.Context) error {
-		dbMu.RLock()
-		orders := make([]*Payload, len(db))
-		copy(orders, db)
-		dbMu.RUnlock()
-		return c.JSON(200, db)
-	})
-	e.POST("/orders", createOrder)
-	e.PUT("/orders/:id", updateOrder)
+	orderHandler.Register(e.Group("/orders"))
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
 	sc := echo.StartConfig{Address: ":3339"}
-	if err := sc.Start(context.Background(), e); err != nil {
+	if err := sc.Start(ctx, e); err != nil {
 		e.Logger.Error("failed to start server", "error", err)
 	}
+
 }
